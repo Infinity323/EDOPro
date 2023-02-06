@@ -893,6 +893,7 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 				int sel = mainGame->lstANCard->getSelected();
 				if(sel != -1) {
 					mainGame->ShowCardInfo(ancard[sel]);
+					mainGame->ShowTcgplayerInfo(ancard[sel]);
 				}
 				break;
 			}
@@ -1052,11 +1053,16 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 					ShowCardInfoInList(mcard, mainGame->btnCardSelect[id - BUTTON_CARD_0], mainGame->wCardSelect);
 					if(mcard->code) {
 						mainGame->ShowCardInfo(mcard->code);
+						mainGame->ShowTcgplayerInfo(mcard->code);
 					} else {
-						if(mcard->cover)
+						if(mcard->cover) {
 							mainGame->ShowCardInfo(mcard->cover, false, imgType::COVER);
-						else
+							mainGame->ShowTcgplayerInfo(mcard->cover);
+						}
+						else {
 							mainGame->ClearCardInfo(mcard->controler);
+							mainGame->ClearTcgplayerInfo();
+						}
 					}
 				}
 			}
@@ -1068,11 +1074,16 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 					ShowCardInfoInList(mcard, mainGame->btnCardDisplay[id - BUTTON_DISPLAY_0], mainGame->wCardDisplay);
 					if(mcard->code) {
 						mainGame->ShowCardInfo(mcard->code);
+						mainGame->ShowTcgplayerInfo(mcard->code);
 					} else {
-						if(mcard->cover)
+						if(mcard->cover) {
 							mainGame->ShowCardInfo(mcard->cover, false, imgType::COVER);
-						else
+							mainGame->ShowTcgplayerInfo(mcard->cover);
+						}
+						else {
 							mainGame->ClearCardInfo(mcard->controler);
+							mainGame->ClearTcgplayerInfo();
+						}
 					}
 				}
 			}
@@ -1613,6 +1624,7 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 					SetShowMark(mcard, true);
 					if(mcard->code) {
 						mainGame->ShowCardInfo(mcard->code);
+						mainGame->ShowTcgplayerInfo(mcard->code);
 						if(mcard->location & (0xe|0x400)) {
 							std::wstring str(gDataManager->GetName(mcard->code));
 							if(mcard->type & TYPE_MONSTER) {
@@ -1667,10 +1679,14 @@ bool ClientField::OnEvent(const irr::SEvent& event) {
 						}
 					} else {
 						should_show_tip = false;
-						if(mcard->cover)
+						if(mcard->cover) {
 							mainGame->ShowCardInfo(mcard->cover, false, imgType::COVER);
-						else
+							mainGame->ShowTcgplayerInfo(mcard->cover);
+						}
+						else {
 							mainGame->ClearCardInfo(mcard->controler);
+							mainGame->ClearTcgplayerInfo();
+						}
 					}
 				}
 				hovered_card = mcard;
@@ -1931,6 +1947,7 @@ bool ClientField::OnCommonEvent(const irr::SEvent& event, bool& stopPropagation)
 				int sel = mainGame->lstLog->getSelected();
 				if(sel != -1 && (int)mainGame->logParam.size() >= sel && mainGame->logParam[sel]) {
 					mainGame->ShowCardInfo(mainGame->logParam[sel]);
+					mainGame->ShowTcgplayerInfo(mainGame->logParam[sel]);
 				}
 				return true;
 			}

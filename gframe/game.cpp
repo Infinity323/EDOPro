@@ -1,4 +1,6 @@
 #include <sstream>
+#include <string>
+#include <vector>
 #include <nlohmann/json.hpp>
 #include <fmt/format.h>
 #include <fmt/printf.h>
@@ -102,6 +104,8 @@ Game::~Game() {
 		filesystem->drop();
 	if(skinSystem)
 		delete skinSystem;
+	curl_easy_cleanup(curl);
+	curl_slist_free_all(headers);
 }
 
 void Game::Initialize() {
@@ -1097,6 +1101,14 @@ void Game::Initialize() {
 	env->getRootGUIElement()->bringToFront(wBtnSettings);
 	env->getRootGUIElement()->bringToFront(mTopMenu);
 	env->setFocus(wMainMenu);
+
+	curl = curl_easy_init();
+	headers = curl_slist_append(headers, "Content-Type: application/json");
+	curl_easy_setopt(curl, CURLOPT_CUSTOMREQUEST, "POST");
+	curl_easy_setopt(curl, CURLOPT_URL, "https://mpapi.tcgplayer.com/v2/search/request");
+	curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+	curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, write_callback);
+	curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void*)&tcgplayerResponse);
 }
 
 static constexpr std::pair<epro::wstringview, irr::video::E_DRIVER_TYPE> supported_graphic_drivers[]{
@@ -1535,6 +1547,18 @@ void Game::PopulateTabSettingsWindow() {
 		defaultStrings.emplace_back(tabRepositories, 2045);
 		mTabRepositories = irr::gui::CGUICustomContextMenu::addCustomContextMenu(env, tabRepositories, -1, Scale(1, 275, 301, 639));
 		mTabRepositories->setCloseHandling(irr::gui::ECONTEXT_MENU_CLOSE::ECMC_HIDE);
+	}
+	//tcgplayer
+	{
+		tabTcgplayer = wInfos->addTab(L"TCGplayer");
+		tableTcgplayer = irr::gui::CGUICustomTable::addCustomTable(env, Scale(10, 10, 554, 550), tabTcgplayer);
+		tableTcgplayer->setResizableColumns(false);
+		tableTcgplayer->addColumn(L"Code");
+		tableTcgplayer->addColumn(L"Rarity");
+		tableTcgplayer->addColumn(L"Market Price");
+		tableTcgplayer->setColumnWidth(0, Scale(160));
+		tableTcgplayer->setColumnWidth(1, Scale(264));
+		tableTcgplayer->setColumnWidth(2, Scale(120));
 	}
 }
 
@@ -2170,6 +2194,7 @@ bool Game::MainLoop() {
 		EnableMaterial2D(false);
 		if(cardimagetextureloading) {
 			ShowCardInfo(showingcard);
+			ShowTcgplayerInfo(showingcard);
 		}
 		if(signalFrame > 0) {
 			uint32_t movetime = std::min(delta_time, signalFrame);
@@ -2850,6 +2875,96 @@ void Game::ClearCardInfo(int player) {
 	cardimagetextureloading = false;
 	showingcard = 0;
 }
+void Game::ShowTcgplayerInfo(uint32_t code, bool resize) {
+	tableTcgplayer->clearRows();
+	if(code == 0) {
+		ClearTcgplayerInfo();
+		return;
+	}
+	auto cd = gDataManager->GetCardData(code);
+	if(!cd)
+		ClearTcgplayerInfo();
+	auto tmp_code = code;
+	if(cd->IsInArtworkOffsetRange())
+		tmp_code = cd->alias;
+	char cardName[10000];
+	wcstombs(cardName, gDataManager->GetName(tmp_code).data(), 10000);
+	CURLcode res;
+	nlohmann::json jsonObj = R"(
+		{
+			"size": 24,
+			"filters": {
+				"term": {
+					"productLineName": ["yugioh"],
+					"productName": ["Blue-Eyes White Dragon"],
+					"language": ["English"]
+				}
+			},
+			"listingSearch": {
+				"filters": {
+					"term": {
+						"sellerStatus":"Live",
+						"channelId": 0
+					},
+					"range": {
+						"quantity": {
+							"gte": 1
+						}
+					}
+				}
+			},
+			"context": {
+				"shippingCountry": "US"
+			},
+			"sort": {
+				"field": "market-price",
+				"order": "asc"
+			}
+		}
+	)"_json;
+	jsonObj["filters"]["term"]["productName"] = { cardName };
+	std::string jsonStr = jsonObj.dump();
+	std::vector<CardListing> listings;
+	// Check cache before performing curl
+	if (tcgplayerCache.find(cardName) != tcgplayerCache.end()) {
+		listings = tcgplayerCache[cardName];
+	}
+	else if (curl) {
+		tcgplayerResponse.memory = (char*)malloc(1);
+		tcgplayerResponse.size = 0;
+		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, jsonStr.c_str());
+		res = curl_easy_perform(curl);
+		if (res == CURLE_OK) {
+			nlohmann::json responseJson = nlohmann::json::parse(tcgplayerResponse.memory);
+			for (const auto& result : responseJson["results"][0]["results"]) {
+				listings.push_back(CardListing(result["customAttributes"]["number"].dump(), result["rarityName"].dump(), result["marketPrice"]));
+			}
+			// Add to cache
+			tcgplayerCache.insert({ cardName, listings });
+		}
+		free(tcgplayerResponse.memory);
+	}
+	std::string info;
+	for (const CardListing& listing : listings) {
+		int index = tableTcgplayer->getRowCount();
+		tableTcgplayer->addRow(index);
+		tableTcgplayer->setCellText(index, 0, std::wstring(listing.code.begin(), listing.code.end()).c_str());
+		tableTcgplayer->setCellText(index, 1, std::wstring(listing.rarity.begin(), listing.rarity.end()).c_str());
+		if (listing.price == 0) {
+			tableTcgplayer->setCellText(index, 2, L"---");
+		}
+		else {
+			std::string priceStr = "$" + std::to_string(listing.price);
+			priceStr = priceStr.substr(0, priceStr.length() - 4);
+			tableTcgplayer->setCellText(index, 2, std::wstring(priceStr.begin(), priceStr.end()).c_str());
+		}
+	}
+	// stTcgplayer->setText(std::wstring(info.begin(), info.end()).c_str());
+}
+void Game::ClearTcgplayerInfo() {
+	// stTcgplayer->setText(L"");
+	tableTcgplayer->clearRows();
+}
 void Game::AddChatMsg(epro::wstringview msg, int player, int type) {
 	for(int i = 7; i > 0; --i) {
 		chatMsg[i].swap(chatMsg[i - 1]);
@@ -3452,6 +3567,7 @@ void Game::ReloadCBVsync() {
 }
 void Game::ReloadElementsStrings() {
 	ShowCardInfo(showingcard, true);
+	ShowTcgplayerInfo(showingcard, true);
 
 	for(auto& elem : defaultStrings) {
 		elem.first->setText(gDataManager->GetSysString(elem.second).data());
@@ -3644,6 +3760,7 @@ void Game::OnResize() {
 	btnPSDD->setImage(imageManager.tCover[0]);
 
 	ShowCardInfo(showingcard, true);
+	ShowTcgplayerInfo(showingcard, true);
 
 	tabSystem->setRelativePosition({ {}, tabSystem->getParent()->getAbsolutePosition().getSize() });
 	auto repos_with_min_x = [x=std::min(tabSystem->getSubpanel()->getRelativePosition().getWidth() - 21, Scale(300))](irr::gui::IGUIElement* elem) {

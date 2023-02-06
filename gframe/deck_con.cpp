@@ -894,6 +894,7 @@ bool DeckBuilder::OnEvent(const irr::SEvent& event) {
 				}
 				if(firstcode)
 					mainGame->ShowCardInfo(firstcode);
+					mainGame->ShowTcgplayerInfo(firstcode);
 				return true;
 			}
 			case irr::DROP_END:	{
@@ -1001,6 +1002,7 @@ void DeckBuilder::GetHoveredCard() {
 	if(!is_draging && pre_code != hovered_code) {
 		if(hovered_code)
 			mainGame->ShowCardInfo(hovered_code);
+			mainGame->ShowTcgplayerInfo(hovered_code);
 	}
 }
 #define CHECK_AND_SET(x) if(x != prev_##x) {\

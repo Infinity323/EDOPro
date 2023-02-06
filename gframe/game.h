@@ -5,6 +5,7 @@
 #include <vector>
 #include <list>
 #include <atomic>
+#include <curl/curl.h>
 #include "materials.h"
 #include "settings_window.h"
 #include "config.h"
@@ -20,6 +21,7 @@
 #include "discord_wrapper.h"
 #include "windbot_panel.h"
 #include "ocgapi_types.h"
+#include "tcgplayer.h"
 
 struct unzip_payload;
 class CGUISkinSystem;
@@ -173,6 +175,29 @@ public:
 	void ShowCardInfo(uint32_t code, bool resize = false, imgType type = imgType::ART);
 	void RefreshCardInfoTextPositions();
 	void ClearCardInfo(int player = 0);
+	struct MemoryStruct {
+		char* memory;
+		size_t size;
+	};
+	static size_t write_callback(char* contents, size_t size, size_t nmemb, void* userp) {
+		size_t realsize = size * nmemb;
+		struct MemoryStruct *mem = (struct MemoryStruct *)userp;
+
+		mem->memory = (char*)realloc(mem->memory, mem->size + realsize + 1);
+		if(mem->memory == NULL) {
+		/* out of memory */
+		printf("not enough memory (realloc returned NULL)\n");
+		return 0;
+		}
+
+		memcpy(&(mem->memory[mem->size]), contents, realsize);
+		mem->size += realsize;
+		mem->memory[mem->size] = 0;
+
+		return realsize;
+	}
+	void ShowTcgplayerInfo(uint32_t code, bool resize = false);
+	void ClearTcgplayerInfo();
 	void AddChatMsg(epro::wstringview msg, int player, int type);
 	void AddChatMsg(epro::wstringview name, epro::wstringview msg, int type);
 	void AddLog(epro::wstringview msg, int param = 0);
@@ -360,6 +385,7 @@ public:
 	irr::gui::IGUIStaticText* stSetName;
 	irr::gui::IGUIStaticText* stPasscodeScope;
 	irr::gui::IGUIStaticText* stText;
+	irr::gui::IGUIStaticText* stTcgplayerPlaceholder;
 
 	irr::gui::IGUITab* tabLog;
 	irr::gui::IGUIListBox* lstLog;
@@ -375,6 +401,8 @@ public:
 	irr::gui::Panel* tabSystem;
 	SettingsPane tabSettings;
 	irr::gui::IGUIButton* btnTabShowSettings;
+	irr::gui::IGUITab* tabTcgplayer;
+	irr::gui::IGUITable* tableTcgplayer;
 
 	void PopulateGameHostWindows();
 	void PopulateTabSettingsWindow();
@@ -734,6 +762,12 @@ public:
 	irr::gui::IGUIButton* btnJoinCancel2;
 	irr::gui::IGUIStaticText* fpsCounter;
 	std::vector<std::pair<irr::gui::IGUIElement*, uint32_t>> defaultStrings;
+
+	//tcgplayer
+	CURL* curl;
+	struct curl_slist* headers;
+	struct MemoryStruct tcgplayerResponse;
+	std::unordered_map<std::string, std::vector<CardListing>> tcgplayerCache;
 };
 
 extern Game* mainGame;
