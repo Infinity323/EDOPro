@@ -1550,6 +1550,7 @@ void Game::PopulateTabSettingsWindow() {
 	}
 	//tcgplayer
 	{
+		// TODO: resizing
 		tabTcgplayer = wInfos->addTab(L"TCGplayer");
 		tableTcgplayer = irr::gui::CGUICustomTable::addCustomTable(env, Scale(10, 10, 554, 550), tabTcgplayer);
 		tableTcgplayer->setResizableColumns(false);
@@ -2876,6 +2877,7 @@ void Game::ClearCardInfo(int player) {
 	showingcard = 0;
 }
 void Game::ShowTcgplayerInfo(uint32_t code, bool resize) {
+	// TODO: add deck pricing info
 	tableTcgplayer->clearRows();
 	if(code == 0) {
 		ClearTcgplayerInfo();
@@ -2959,10 +2961,9 @@ void Game::ShowTcgplayerInfo(uint32_t code, bool resize) {
 			tableTcgplayer->setCellText(index, 2, std::wstring(priceStr.begin(), priceStr.end()).c_str());
 		}
 	}
-	// stTcgplayer->setText(std::wstring(info.begin(), info.end()).c_str());
 }
 void Game::ClearTcgplayerInfo() {
-	// stTcgplayer->setText(L"");
+	// TODO: clear properly
 	tableTcgplayer->clearRows();
 }
 void Game::AddChatMsg(epro::wstringview msg, int player, int type) {
