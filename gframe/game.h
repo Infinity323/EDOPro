@@ -175,27 +175,6 @@ public:
 	void ShowCardInfo(uint32_t code, bool resize = false, imgType type = imgType::ART);
 	void RefreshCardInfoTextPositions();
 	void ClearCardInfo(int player = 0);
-	struct MemoryStruct {
-		char* memory;
-		size_t size;
-	};
-	static size_t write_callback(char* contents, size_t size, size_t nmemb, void* userp) {
-		size_t realsize = size * nmemb;
-		struct MemoryStruct *mem = (struct MemoryStruct *)userp;
-
-		mem->memory = (char*)realloc(mem->memory, mem->size + realsize + 1);
-		if(mem->memory == NULL) {
-		/* out of memory */
-		printf("not enough memory (realloc returned NULL)\n");
-		return 0;
-		}
-
-		memcpy(&(mem->memory[mem->size]), contents, realsize);
-		mem->size += realsize;
-		mem->memory[mem->size] = 0;
-
-		return realsize;
-	}
 	void ShowTcgplayerInfo(uint32_t code, bool resize = false);
 	void ClearTcgplayerInfo();
 	void AddChatMsg(epro::wstringview msg, int player, int type);
@@ -385,7 +364,7 @@ public:
 	irr::gui::IGUIStaticText* stSetName;
 	irr::gui::IGUIStaticText* stPasscodeScope;
 	irr::gui::IGUIStaticText* stText;
-	irr::gui::IGUIStaticText* stTcgplayerPlaceholder;
+	irr::gui::IGUIStaticText* stTcgplayer;
 
 	irr::gui::IGUITab* tabLog;
 	irr::gui::IGUIListBox* lstLog;

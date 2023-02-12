@@ -1552,7 +1552,7 @@ void Game::PopulateTabSettingsWindow() {
 	{
 		// TODO: resizing
 		tabTcgplayer = wInfos->addTab(L"TCGplayer");
-		tableTcgplayer = irr::gui::CGUICustomTable::addCustomTable(env, Scale(10, 10, 554, 550), tabTcgplayer);
+		tableTcgplayer = irr::gui::CGUICustomTable::addCustomTable(env, Scale(10, 10, 554, 300), tabTcgplayer);
 		tableTcgplayer->setResizableColumns(false);
 		tableTcgplayer->addColumn(L"Code");
 		tableTcgplayer->addColumn(L"Rarity");
@@ -1560,6 +1560,8 @@ void Game::PopulateTabSettingsWindow() {
 		tableTcgplayer->setColumnWidth(0, Scale(160));
 		tableTcgplayer->setColumnWidth(1, Scale(264));
 		tableTcgplayer->setColumnWidth(2, Scale(120));
+		stTcgplayer = irr::gui::CGUICustomText::addCustomText(L"", false, env, tabTcgplayer, -1, Scale(10, 301, 554, 639));
+		stTcgplayer->setWordWrap(true);
 	}
 }
 
@@ -2877,7 +2879,6 @@ void Game::ClearCardInfo(int player) {
 	showingcard = 0;
 }
 void Game::ShowTcgplayerInfo(uint32_t code, bool resize) {
-	// TODO: add deck pricing info
 	tableTcgplayer->clearRows();
 	if(code == 0) {
 		ClearTcgplayerInfo();
@@ -2892,61 +2893,18 @@ void Game::ShowTcgplayerInfo(uint32_t code, bool resize) {
 	char cardName[10000];
 	wcstombs(cardName, gDataManager->GetName(tmp_code).data(), 10000);
 	CURLcode res;
-	nlohmann::json jsonObj = R"(
-		{
-			"size": 24,
-			"filters": {
-				"term": {
-					"productLineName": ["yugioh"],
-					"productName": ["Blue-Eyes White Dragon"],
-					"language": ["English"]
-				}
-			},
-			"listingSearch": {
-				"filters": {
-					"term": {
-						"sellerStatus":"Live",
-						"channelId": 0
-					},
-					"range": {
-						"quantity": {
-							"gte": 1
-						}
-					}
-				}
-			},
-			"context": {
-				"shippingCountry": "US"
-			},
-			"sort": {
-				"field": "market-price",
-				"order": "asc"
-			}
-		}
-	)"_json;
-	jsonObj["filters"]["term"]["productName"] = { cardName };
-	std::string jsonStr = jsonObj.dump();
-	std::vector<CardListing> listings;
 	// Check cache before performing curl
+	std::vector<CardListing> listings;
 	if (tcgplayerCache.find(cardName) != tcgplayerCache.end()) {
 		listings = tcgplayerCache[cardName];
 	}
 	else if (curl) {
-		tcgplayerResponse.memory = (char*)malloc(1);
-		tcgplayerResponse.size = 0;
-		curl_easy_setopt(curl, CURLOPT_POSTFIELDS, jsonStr.c_str());
-		res = curl_easy_perform(curl);
-		if (res == CURLE_OK) {
-			nlohmann::json responseJson = nlohmann::json::parse(tcgplayerResponse.memory);
-			for (const auto& result : responseJson["results"][0]["results"]) {
-				listings.push_back(CardListing(result["customAttributes"]["number"].dump(), result["rarityName"].dump(), result["marketPrice"]));
-			}
-			// Add to cache
-			tcgplayerCache.insert({ cardName, listings });
-		}
-		free(tcgplayerResponse.memory);
+		curlTcgplayer(cardName, listings, tcgplayerResponse, curl, res);
+        // Add to cache
+        tcgplayerCache.insert({ cardName, listings });
 	}
 	std::string info;
+	// Load up table with pricing info
 	for (const CardListing& listing : listings) {
 		int index = tableTcgplayer->getRowCount();
 		tableTcgplayer->addRow(index);
@@ -2961,6 +2919,69 @@ void Game::ShowTcgplayerInfo(uint32_t code, bool resize) {
 			tableTcgplayer->setCellText(index, 2, std::wstring(priceStr.begin(), priceStr.end()).c_str());
 		}
 	}
+	// Perform curl for every card in the deck
+	Deck deck = deckBuilder.GetCurrentDeck();
+	float mainDeckPrice = 0, extraDeckPrice = 0, sideDeckPrice = 0;
+	char currentCardName[1000];
+	std::vector<CardListing> currentListings;
+	for (auto& card : deck.main) {
+		wcstombs(currentCardName, gDataManager->GetName(card->code).data(), sizeof(currentCardName));
+		if (tcgplayerCache.find(currentCardName) != tcgplayerCache.end()) {
+			if (tcgplayerCache[currentCardName].size() > 0)
+				mainDeckPrice += tcgplayerCache[currentCardName][0].price;
+		}
+		else if (curl) {
+			curlTcgplayer(currentCardName, currentListings, tcgplayerResponse, curl, res);
+			// Add to cache
+			tcgplayerCache.insert({ currentCardName, currentListings });
+			if (tcgplayerCache[currentCardName].size() > 0)
+				mainDeckPrice += currentListings[0].price;
+		}
+		memset(currentCardName, sizeof(currentCardName), 0);
+		currentListings.clear();
+	}
+	for (auto& card : deck.extra) {
+		wcstombs(currentCardName, gDataManager->GetName(card->code).data(), sizeof(currentCardName));
+		if (tcgplayerCache.find(currentCardName) != tcgplayerCache.end()) {
+			if (tcgplayerCache[currentCardName].size() > 0)
+				extraDeckPrice += tcgplayerCache[currentCardName][0].price;
+		}
+		else if (curl) {
+			curlTcgplayer(currentCardName, currentListings, tcgplayerResponse, curl, res);
+			// Add to cache
+			tcgplayerCache.insert({ currentCardName, currentListings });
+			if (tcgplayerCache[currentCardName].size() > 0)
+				extraDeckPrice += currentListings[0].price;
+		}
+		memset(currentCardName, sizeof(currentCardName), 0);
+		currentListings.clear();
+	}
+	for (auto& card : deck.side) {
+		wcstombs(currentCardName, gDataManager->GetName(card->code).data(), sizeof(currentCardName));
+		if (tcgplayerCache.find(currentCardName) != tcgplayerCache.end()) {
+			if (tcgplayerCache[currentCardName].size() > 0)
+				sideDeckPrice += tcgplayerCache[currentCardName][0].price;
+		}
+		else if (curl) {
+			curlTcgplayer(currentCardName, currentListings, tcgplayerResponse, curl, res);
+			// Add to cache
+			tcgplayerCache.insert({ currentCardName, currentListings });
+			if (tcgplayerCache[currentCardName].size() > 0)
+				sideDeckPrice += currentListings[0].price;
+		}
+		memset(currentCardName, sizeof(currentCardName), 0);
+		currentListings.clear();
+	}
+	std::string mainDeckPriceStr = "Main Deck: $" + std::to_string(mainDeckPrice);
+	mainDeckPriceStr = mainDeckPriceStr.substr(0, mainDeckPriceStr.length() - 4);
+	std::string extraDeckPriceStr = "Extra Deck: $" + std::to_string(extraDeckPrice);
+	extraDeckPriceStr = extraDeckPriceStr.substr(0, extraDeckPriceStr.length() - 4);
+	std::string sideDeckPriceStr = "Side Deck: $" + std::to_string(sideDeckPrice);
+	sideDeckPriceStr = sideDeckPriceStr.substr(0, sideDeckPriceStr.length() - 4);
+	std::string totalDeckPriceStr = "Total: $" + std::to_string(mainDeckPrice + extraDeckPrice + sideDeckPrice);
+	totalDeckPriceStr = totalDeckPriceStr.substr(0, totalDeckPriceStr.length() - 4);
+	std::string deckPriceStr = "Deck Cost Estimates (Lowest)\n" + mainDeckPriceStr + "\n" + extraDeckPriceStr + "\n" + sideDeckPriceStr + "\n" + totalDeckPriceStr;
+	stTcgplayer->setText(std::wstring(deckPriceStr.begin(), deckPriceStr.end()).c_str());
 }
 void Game::ClearTcgplayerInfo() {
 	// TODO: clear properly
