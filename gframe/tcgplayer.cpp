@@ -9,8 +9,7 @@ void curlTcgplayer(char* cardName, std::vector<CardListing>& listings, struct Me
 			"filters": {
 				"term": {
 					"productLineName": ["yugioh"],
-					"productName": ["Blue-Eyes White Dragon"],
-					"language": ["English"]
+					"productName": ["Blue-Eyes White Dragon"]
 				}
 			},
 			"listingSearch": {
